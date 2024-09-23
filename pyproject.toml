@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mygeopackage"
+version = "0.0.1"
+readme = "README.md"
+description = "A demonstrative geospatial package."
+keywords = ["GIS", "remote sensing"]
+requires-python = ">=3.10"
+dependencies = [
+    "numpy",
+    "pandas",
+    "matplotlib",
+    "rasterio",
+    "pyproj",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]  # list of folders that contain the packages (["."] by default)
+include = ["mygeopackage*"]  # package names should match these glob patterns (["*"] by default)
+#exclude = []  # exclude packages matching these glob patterns (empty by default)
+
+# Optional. Used to configure black (autoformatter)
+[tool.black]
+line-length = 100
+# Optional. Used to configure isort (import sorter)
+[tool.isort]
+profile = "black"
+line_length = 100
