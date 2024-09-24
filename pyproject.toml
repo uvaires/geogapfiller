@@ -10,13 +10,12 @@ description = "Method used to gap-filling data in geospatial images."
 keywords = ["GIS", "remote sensing"]
 requires-python = ">=3.9"
 dependencies = [
-    
     "numpy",
     "pandas",
-    "geopandas"
+    "geopandas",  
     "matplotlib",
     "rasterio",
-    "pyproj",
+    "pyproj"
 ]
 
 [tool.setuptools.packages.find]
@@ -27,6 +26,7 @@ include = ["geogapfiller*"]  # package names should match these glob patterns ([
 # Optional. Used to configure black (autoformatter)
 [tool.black]
 line-length = 100
+
 # Optional. Used to configure isort (import sorter)
 [tool.isort]
 profile = "black"
