@@ -15,7 +15,16 @@ dependencies = [
     "geopandas",  
     "matplotlib",
     "rasterio",
-    "pyproj"
+    "pyproj",
+    "os",
+    "glob",
+    "sklearn",
+    "joblib",
+    "scipy",
+    "collections"
+    "lightgbm",
+
+
 ]
 
 [tool.setuptools.packages.find]

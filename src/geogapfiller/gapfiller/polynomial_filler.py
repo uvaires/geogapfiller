@@ -1,6 +1,6 @@
 import os
 import glob
-from datetime import datetime, timedelta
+from datetime import timedelta
 import numpy as np
 from sklearn.preprocessing import PolynomialFeatures
 from sklearn.linear_model import LinearRegression
@@ -8,167 +8,128 @@ from joblib import Parallel, delayed
 import rasterio
 
 
-def poly_evi_filled(base_dir: str, filling_tech: str, station_name: str, poly_degree=2, n_jobs=-1) -> None:
+def poly_filler(inputdir: str, outputdir: str, base_dates: list, window=15, poly_degree=2, n_jobs=-1) -> None:
     """
-    Fill the gaps in the EVI images using a polynomial regression model
-    :param base_dir: location of the EVI images
-    :param tile_id: tile ID
-    :param filling_tech: name of the filling technique
-    :param station_name: name of the station
+    Fill the gaps in the geospatial rasters using a polynomial regression model
+    :param inputdir: location of the raster images
+    :param outputdir: location to save the filled raster images
+    :param base_dates: list of base dates
+    :param window: window size
+    :param poly_degree: polynomial degree
+    :param n_jobs: number of jobs to run in parallel
     :return: None
     """
     # Read the images
-    evi_img = glob.glob(os.path.join(base_dir, 'data_processed', station_name, '**', 'spectral_index', '**', '*.tif'), recursive=True)
+    img_path = glob.glob(os.path.join(inputdir,  '**', '*.tif'), recursive=True)
     # Extract the base dates and product
-    dates, product, tile_id, year = _img_metadata(evi_img)
-    # Stack the EVI images
-    stack_imgs = _stack_evi(evi_img)
-    # Fill the gaps in the EVI images
-    filled_evi, _ = _poly_filling(evi_img, stack_imgs, poly_degree=poly_degree, n_jobs=n_jobs)
+    img_names = _img_metadata(img_path)
+    # Stack the images
+    stack_imgs = _stack_raster(img_path)
+    # Fill the gaps in the images
+    filled_raster = _poly_filling(stack_imgs, base_dates, window=window, poly_degree=poly_degree, n_jobs=n_jobs)
 
-    # Export the filled EVI images
-    _export_evi(base_dir, evi_img, year, filled_evi, dates, product, filling_tech, station_name)
+    # Export the filled images
+    _export_raster(outputdir, img_path, filled_raster, img_names)
 
 
-# Function to fill gaps using a polynomial 2 degree
-def _poly_filling(evi_img: list, arr, poly_degree=2, n_jobs=-1):
-    """
-    Fill the gaps in the EVI images using a polynomial regression model
-    :param evi_img: List of EVI images
-    :param arr: stacked EVI images
-    :param poly_degree: polynomial degree
-    :param n_jobs: number of jobs to run in parallel
-    :return: filled_arr, all_dates
+# Function to fill gaps using a polynomial of 2nd degree
+def _poly_filling(stacked_images, base_dates, window=15, poly_degree=2, n_jobs=-1):
+    filled_arr = stacked_images.copy()
 
-    """
-    base_dates = []
-    all_dates = []
+    def fill_missing_for_index(i, j, raster_values, base_dates):
+        raster_values_filled = raster_values.copy()
 
-    for dates in evi_img:
-        dates_evi = os.path.basename(dates).split('_')[0]
-        formatted_date = f"{dates_evi[:4]}{dates_evi[4:6]}{dates_evi[6:]}"
-        base_date = datetime.strptime(formatted_date, "%Y%m%d")
-        base_dates.append(base_date)
-        all_dates.append(base_date)
+        for index_ii, raster_value in enumerate(raster_values_filled):
+            if np.isnan(raster_value):
+                # Get the current date for the NaN value
+                current_date = base_dates[index_ii]
 
-    start_date = min(base_dates)
-    end_date = max(base_dates)
-    date_range = [start_date + timedelta(days=i) for i in range((end_date - start_date).days + 1)]
+                # Define the start and end of the window
+                start_date = current_date - timedelta(days=window)
+                end_date = current_date + timedelta(days=window)
 
-    filled_arr = arr.copy()
+                # Find valid indices within the window
+                valid_indices = [idx for idx, date in enumerate(base_dates)
+                                 if start_date <= date <= end_date and not np.isnan(raster_values_filled[idx])]
 
-    def fill_missing_for_index(i, j, evi_values):
-        evi_values_filled = evi_values.copy()
+                X_valid = np.array([base_dates[idx].toordinal() for idx in valid_indices]).reshape(-1, 1)
+                y_valid = raster_values_filled[valid_indices]
 
-        for index_ii, evi_value in enumerate(evi_values_filled):
-            if np.isnan(evi_value):
-                start_window = max(0, index_ii - 15)
-                end_window = min(len(evi_values_filled), index_ii + 15)
-
-                valid_indices = ~np.isnan(evi_values_filled[start_window:end_window])
-                X_valid = np.arange(len(evi_values_filled[start_window:end_window]))[valid_indices].reshape(-1, 1)
-                y_valid = evi_values_filled[start_window:end_window][valid_indices]
-
+                # Only fit if there are more than one valid data point
                 if len(X_valid) > 1:
                     poly = PolynomialFeatures(poly_degree)
                     X_poly = poly.fit_transform(X_valid)
 
-                    model = LinearRegression(n_jobs=n_jobs)
+                    model = LinearRegression()
                     model.fit(X_poly, y_valid)
 
-                    pred_value = model.predict(poly.transform(np.array([[index_ii - start_window]])))
+                    # Predict the value for the current date
+                    pred_value = model.predict(poly.transform(np.array([[current_date.toordinal()]])))
 
-                    # Apply the condition to replace values outside the range [-1, 1]
+                    # Clip values to stay within range [-1, 1]
                     pred_value = np.clip(pred_value, -1, 1)
 
-                    evi_values_filled[index_ii] = pred_value[0]
+                    raster_values_filled[index_ii] = pred_value[0]
 
-        return i, j, evi_values_filled
+        return i, j, raster_values_filled
 
     # Prepare indices for parallel processing
-    indices = [(i, j, arr[:, i, j]) for i in range(arr.shape[1]) for j in range(arr.shape[2])]
+    indices = [(i, j, stacked_images[:, i, j], base_dates)
+               for i in range(stacked_images.shape[1])
+               for j in range(stacked_images.shape[2])]
 
     # Process each pixel in parallel using Joblib
-    results = Parallel(n_jobs=os.cpu_count())(delayed(fill_missing_for_index)(*index) for index in indices)
+    results = Parallel(n_jobs=n_jobs)(delayed(fill_missing_for_index)(*index) for index in indices)
 
     # Update the filled_arr with the results
     for result in results:
-        i, j, evi_values_filled = result
-        filled_arr[:, i, j] = evi_values_filled
+        i, j, raster_values_filled = result
+        filled_arr[:, i, j] = raster_values_filled
 
-    return filled_arr, all_dates
-
+    return filled_arr
 
 ## Private functions ###
+def _img_metadata(img_raster):
 
-def _img_metadata(evi_img):
-    """
-    Extract the base dates and product from the image metadata
-    :param evi_img: List of image file paths
-    :return: Tuple containing lists of dates, products, tile_id, and years
-    """
-    base_dates = []
-    hls_product = []
-    tile_id = os.path.basename(evi_img[0]).split('_')[2]
-    years = []
+    imgs_names = []
 
-    for metadates in evi_img:
-        dates = os.path.basename(metadates).split('_')[0]
-        convert_date = datetime.strptime(dates, '%Y%m%d')
-        year = convert_date.year
-        year_str = str(year)
-        product = os.path.basename(metadates).split('_')[1]
-        base_dates.append(dates)
-        hls_product.append(product)
-        years.append(year_str)
+    for metadates in img_raster:
+        basename = os.path.basename(metadates)
+        imgs_names.append(basename)
 
-    return base_dates, hls_product, tile_id, years
+    return imgs_names
 
 
-def _stack_evi(evi_img):
-    """
-    Stack the EVI images into a 3D array
-    :param evi_img:
-    :return: stacked EVI images
-    """
-    evi_layers = []
-    for img in evi_img:
+def _stack_raster(raster_img):
+
+    raster_layers = []
+    for img in raster_img:
         with rasterio.open(img) as src:
-            evi_layer = src.read(1)
-            evi_layers.append(evi_layer)
+            raster_layer = src.read(1)
+            raster_layers.append(raster_layer)
 
     # stack the EVI layers
-    stacked_evi = np.stack(evi_layers, axis=0)
-    stacked_evi = np.squeeze(stacked_evi)
+    stacked_raster = np.stack(raster_layers, axis=0)
+    stacked_raster = np.squeeze(stacked_raster)
 
-    return stacked_evi
+    return stacked_raster
 
 
-def _export_evi(base_dir, evi_img, year, evi_filled, base_dates, product, filling_technique, station_name):
-    """
-    Export the filled EVI images
-    :param base_dir: Location of the EVI images
-    :param evi_filled: Filled EVI images
-    :param year: Years
-    :param base_dates: Base dates
-    :param product: Product
-    :param filling_technique: Name of the filling technique
-    :param station_name: Name of the station
-    :return: None
-    """
+def _export_raster(outputdir, img_path, raster_filled, base_names):
+
     # Open the first image to get the profile
-    with rasterio.open(evi_img[0]) as src:
+    with rasterio.open(img_path[0]) as src:
         band_profile = src.profile
 
     # Output the filled EVI images
-    basedir_evi = os.path.join(base_dir, 'data_processed', station_name)
+    outputpath = os.path.join(outputdir, 'data_processed', "polynomial_filler")
 
-    for layer_data, current_date, product, year in zip(evi_filled, base_dates, product, year):
+    for layer_data, current_names in zip(raster_filled, base_names):
         # Construct the output file path for the current layer
-        dir_output_date = os.path.join(basedir_evi, year, 'filling_techniques', filling_technique)
-        os.makedirs(dir_output_date, exist_ok=True)
-        output_filename = f"{current_date}_{product}.tif"
-        output_filepath = os.path.join(dir_output_date, output_filename)
+        dir_output_data = os.path.join(outputpath)
+        os.makedirs(dir_output_data, exist_ok=True)
+        output_filename = f"{current_names}_filled.tif"
+        output_filepath = os.path.join(dir_output_data, output_filename)
 
         # Write the filled EVI image to a GeoTIFF file
         with rasterio.open(output_filepath, 'w', **band_profile) as dst:

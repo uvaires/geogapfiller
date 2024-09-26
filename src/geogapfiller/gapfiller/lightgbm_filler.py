@@ -1,167 +1,128 @@
 import os
 import glob
-from datetime import datetime, timedelta
+from datetime import timedelta
 import numpy as np
 from joblib import Parallel, delayed
 import rasterio
 from lightgbm import LGBMRegressor
 
 
-def lightgbm_evi_filled(base_dir: str, filling_tech: str, station_name) -> None:
+def lightgbm_filled(inputdir: str, outputdir: str, base_dates:list, window=15,  n_jobs=-1) -> None:
     """
-    Fill the gaps in the EVI images using a lightgbm model
-    :param base_dir: location of the EVI images
-    :param tile_id: tile ID
-    :param filling_tech: name of the filling technique
+    Fill the gaps in the geospatial rasters using a LightGBM model
+    :param inputdir: location of the raster images
+    :param outputdir: location to save the filled raster images
+    :param base_dates: list of base dates
+    :param window: window size
+    :param n_jobs: number of jobs to run in parallel
     :return: None
+
     """
     # Read the images
-    evi_img = glob.glob(os.path.join(base_dir, 'data_processed', station_name, '**', 'spectral_index', '**', '*.tif'), recursive=True)
+    img_path = glob.glob(os.path.join(inputdir, '**', '*.tif'), recursive=True)
     # Extract the base dates and product
-    dates, product, tile_id, year = _img_metadata(evi_img)
-    # Stack the EVI images
-    stack_imgs = _stack_evi(evi_img)
-    # Fill the gaps in the EVI images
-    filled_evi, _ = _lightgbm_filling(evi_img, stack_imgs, n_jobs=-1)
+    img_names = _img_metadata(img_path)
+    # Stack the images
+    stack_imgs = _stack_raster(img_path)
+    # Fill the gaps in the images
+    filled_raster = _lightgbm_filling(stack_imgs, base_dates, window=window, n_jobs=n_jobs)
 
-    # Export the filled EVI images
-    _export_evi(base_dir, evi_img, year, filled_evi, dates, product, filling_tech, station_name)
+    # Export the filled images
+    _export_raster(outputdir, img_path, filled_raster, img_names)
 
 
 # Using a lightgbm model to fill the gaps
-def _lightgbm_filling(evi_img, arr, n_jobs=-1):
-    """ Fill the gaps in the EVI images using a lightgbm model
-    :param evi_img: EVI images
-    :param arr: Stacked EVI images
-    :param n_jobs: Number of parallel jobs
-    :return: EVI images with filled gaps
+def _lightgbm_filling(stack_imgs, base_dates, window=15, n_jobs=-1):
 
-    """
-    base_dates = []
-    all_dates = []
+    filled_arr = stack_imgs.copy()
 
-    for dates in evi_img:
-        dates_evi = os.path.basename(dates).split('_')[0]
-        formatted_date = f"{dates_evi[:4]}{dates_evi[4:6]}{dates_evi[6:]}"
-        base_date = datetime.strptime(formatted_date, "%Y%m%d")
-        base_dates.append(base_date)
-        all_dates.append(base_date)
+    def fill_missing_for_index(i, j, raster_values, n_estimators=50, random_state=0):
+        values_filled = raster_values.copy()
 
-    start_date = min(base_dates)
-    end_date = max(base_dates)
-    date_range = [start_date + timedelta(days=i) for i in range((end_date - start_date).days + 1)]
+        for index_ii, raster_value in enumerate(values_filled):
+            if np.isnan(raster_value):
+                # Get the current date for the NaN value
+                current_date = base_dates[index_ii]
 
-    filled_arr = arr.copy()
+                # Define the start and end of the window based on 15 days around the current date
+                start_date = current_date - timedelta(days=window)
+                end_date = current_date + timedelta(days=window)
 
-    def fill_missing_for_index(i, j, evi_values, n_estimators=50, random_state=0):
-        evi_values_filled = evi_values.copy()
+                # Find the valid indices based on dates within the 15-day window
+                valid_indices = [idx for idx, date in enumerate(base_dates)
+                                 if start_date <= date <= end_date and not np.isnan(values_filled[idx])]
 
-        for index_ii, evi_value in enumerate(evi_values_filled):
-            if np.isnan(evi_value):
-                start_window = max(0, index_ii - 15)
-                end_window = min(len(evi_values_filled), index_ii + 15)
+                if len(valid_indices) > 1:
+                    # Prepare time (t_valid) and corresponding values (y_valid) for LightGBM model
+                    t_valid = np.array([base_dates[idx].toordinal() for idx in valid_indices]).reshape(-1, 1)  # Ordinal date values
+                    y_valid = values_filled[valid_indices]  # Corresponding values
 
-                valid_indices = ~np.isnan(evi_values_filled[start_window:end_window])
-                t_valid = np.arange(len(evi_values_filled[start_window:end_window]))[valid_indices]
-                y_valid = evi_values_filled[start_window:end_window][valid_indices]
-
-                if len(t_valid) > 1:
-                    X_valid = t_valid.reshape(-1, 1)
-                    y_valid = y_valid.reshape(-1, 1)
-
+                    # Initialize and train the LightGBM model
                     lgbm_model = LGBMRegressor(n_estimators=n_estimators, random_state=random_state)
-                    lgbm_model.fit(X_valid, y_valid.ravel())
+                    lgbm_model.fit(t_valid, y_valid.ravel())
 
-                    # Predict the missing value
-                    evi_values_filled[index_ii] = lgbm_model.predict(np.array([[index_ii]]))[0]
+                    # Predict the missing value for the current date (in ordinal form)
+                    values_filled[index_ii] = lgbm_model.predict(np.array([[current_date.toordinal()]]))[0]
 
-        return i, j, evi_values_filled
+        return i, j, values_filled
 
     # Prepare indices for parallel processing
-    indices = [(i, j, arr[:, i, j]) for i in range(arr.shape[1]) for j in range(arr.shape[2])]
+    indices = [(i, j, stack_imgs[:, i, j]) for i in range(stack_imgs.shape[1]) for j in range(stack_imgs.shape[2])]
 
     # Process each pixel in parallel using Joblib
     results = Parallel(n_jobs=n_jobs)(delayed(fill_missing_for_index)(*index) for index in indices)
 
     # Update the filled_arr with the results
     for result in results:
-        i, j, evi_values_filled = result
-        filled_arr[:, i, j] = evi_values_filled
+        i, j, values_filled = result
+        filled_arr[:, i, j] = values_filled
 
+    return filled_arr
 
-    return filled_arr, all_dates
 
 
 ## Private functions ###
 
-def _img_metadata(evi_img):
-    """
-    Extract the base dates and product from the image metadata
-    :param evi_img: List of image file paths
-    :return: Tuple containing lists of dates, products, tile_id, and years
-    """
-    base_dates = []
-    hls_product = []
-    tile_id = os.path.basename(evi_img[0]).split('_')[2]
-    years = []
+def _img_metadata(img_raster):
 
-    for metadates in evi_img:
-        dates = os.path.basename(metadates).split('_')[0]
-        convert_date = datetime.strptime(dates, '%Y%m%d')
-        year = convert_date.year
-        year_str = str(year)
-        product = os.path.basename(metadates).split('_')[1]
-        base_dates.append(dates)
-        hls_product.append(product)
-        years.append(year_str)
+    imgs_names = []
 
-    return base_dates, hls_product, tile_id, years
+    for metadates in img_raster:
+        basename = os.path.basename(metadates)
+        imgs_names.append(basename)
+
+    return imgs_names
 
 
-def _stack_evi(evi_img):
-    """
-    Stack the EVI images into a 3D array
-    :param evi_img:
-    :return: stacked EVI images
-    """
-    evi_layers = []
-    for img in evi_img:
+
+def _stack_raster(img_raster):
+    raster_layers = []
+    for img in img_raster:
         with rasterio.open(img) as src:
-            evi_layer = src.read(1)
-            evi_layers.append(evi_layer)
+            raster_layer = src.read(1)
+            raster_layers.append(raster_layer)
 
     # stack the EVI layers
-    stacked_evi = np.stack(evi_layers, axis=0)
-    stacked_evi = np.squeeze(stacked_evi)
+    stacked_raster = np.stack(raster_layers, axis=0)
+    stacked_raster = np.squeeze(stacked_raster)
 
-    return stacked_evi
+    return stacked_raster
 
 
-def _export_evi(base_dir, evi_img, year, evi_filled, base_dates, product, filling_technique, station_name):
-    """
-    Export the filled EVI images
-    :param base_dir: Location of the EVI images
-    :param evi_filled: Filled EVI images
-    :param year: Years
-    :param base_dates: Base dates
-    :param product: Product
-    :param filling_technique: Name of the filling technique
-    :param station_name: Name of the station
-    :return: None
-    """
-    # Open the first image to get the profile
-    with rasterio.open(evi_img[0]) as src:
+def _export_raster(outputdir, raster_img, raster_filled, img_names):
+     # Open the first image to get the profile
+    with rasterio.open(raster_img[0]) as src:
         band_profile = src.profile
 
-    # Output the filled EVI images
-    basedir_evi = os.path.join(base_dir, 'data_processed', station_name)
+    # Output the filled images
+    outpupath = os.path.join(outputdir, 'data_processed', 'lightgbm_filler')
 
-    for layer_data, current_date, product, year in zip(evi_filled, base_dates, product, year):
+    for layer_data, current_name in zip(raster_filled, img_names):
         # Construct the output file path for the current layer
-        dir_output_date = os.path.join(basedir_evi, year, 'filling_techniques', filling_technique)
-        os.makedirs(dir_output_date, exist_ok=True)
-        output_filename = f"{current_date}_{product}.tif"
-        output_filepath = os.path.join(dir_output_date, output_filename)
+        dir_output_data = os.path.join(outpupath)
+        os.makedirs(dir_output_data, exist_ok=True)
+        output_filename = f"{current_name}_filled.tif"
+        output_filepath = os.path.join(dir_output_data, output_filename)
 
         # Write the filled EVI image to a GeoTIFF file
         with rasterio.open(output_filepath, 'w', **band_profile) as dst:
