@@ -1,7 +1,14 @@
-# Example project
-It's an example repository intended to demonstrate how to create a geospatial project with Python using good software development practices. It's also intended to be used as a template for future projects.
-This repository is organized as a Python package and additional code to import and use the package.
-A presentation with an introduction on how to create your own Python Package is available [here](./presentation/presentation.pdf).
+# geogapfiller
+This repository implements four gap-filling methods to reconstruct geospatial data and predict synthetic images. The methods applied are Polynomial, Median, Harmonic, and LightGBM. Gap-filling is crucial for reconstructing data, as clouds, shadows, and other atmospheric conditions often affect the quality of the images. Description of the methods:
+
+- Median approach: The median is often favored over other statistical measures, such as the mean, because it is less affected by outliers that may result from atmospheric disturbances or sensor errors. This approach selects the median value from the cloud-free pixels in the time series, offering a straightforward solution. However, it does not account for the broader trends or seasonal variations in the data, which may limit its effectiveness in capturing long-term patterns.
+
+- Polynomial approach: The polynomial regression gap-filling approach models the relationship between a dependent variable and one or more independent variables. Higher-degree polynomials can represent more complex relationships, allowing for better data reconstruction. However, as the polynomial degree increases, the model becomes harder to interpret and requires more processing time.
+
+- Harmonic approach: The harmonic gap-filling approach leverages a Fourier-like series, using a combination of sine and cosine functions to estimate missing data. This method is widely applied in remote sensing because of its strength in capturing periodic and seasonal variations. Harmonic models tend to excel when data gaps are evenly distributed, as they can smoothly interpolate across time. However, when gaps are uneven or concentrated in specific periods, the model’s accuracy may decline, resulting in less reliable gap-filling.
+
+- LightGBM approach: The LightGBM gap-filling approach utilizes a tree-based learning algorithm to model relationships in the data. Unlike harmonic models, which assume periodicity, LightGBM does not rely on any inherent patterns and instead learns from the provided training data. It is known for its efficiency and produces results comparable to the Gradient Boosting Machine. 
+
 
 ## Dependencies management and package installation
 The following command can be used to recreate the conda enviroment with all the dependencies needed to run the code in this repository. The package is also installed in development mode. This command should be run from the root of the repository.
@@ -14,48 +21,5 @@ pip install -e .
 ```
 You can also install the package directly from GitHub using the following command:
 ```
-pip install git+https://github.com/lbferreira/geospatial_project_example
+pip install git+https://github.com/uvaires/geogapfiller
 ```
-
-## Project structure
-This repository contains the following structure:
-```
-project_root_folder/
-└───data/
-└───docs/
-└───notebooks/
-└───src/
-│   └───mypackage/
-│       │  __init__.py
-│       │  mymodule.py
-│       │  mymodule2.py
-|       │   └───mysubpackage/
-|       │       │  __init__.py
-|       │       │  mysubmodule.py
-|  .gitignore
-│  environment.yml
-│  pyproject.toml
-│  README.md
-```
-
-- `data/`: Folder to store data used in the project. However, if you are using Git, it's not recommended to store large files in the remote repository. You can keep them locally and use a `.gitignore` file to avoid uploading them to the remote repository. Data can also be stored in a cloud service and downloaded when needed.
-- `docs/`: Folder to store documentation files, such PDFs, images, documents, etc.
-- `notebooks/`: Folder to store Jupyter notebooks. It's recommended to use notebooks only for exploratory analysis or experiments. The "heavy" code should be in the package folder.
-- `src/mypackage/`: Folder to store the package code. You can also use subpackages.
-- `.gitignore`: File to specify which files and folders should be ignored by Git (it's only necessary if you are using Git).
-- `environment.yml`: File to specify the dependencies of the project based on Conda. It can be used to recreate the conda environment.
-- `pyproject.toml`: File to specify the project configuration, such as the package name, version, and dependencies.
-- `README.md`: File to describe the repository.
-
-Once your project is organized in this way, you can use pip to install it in development mode. In this mode you can make changes and test the code without the need to reinstall the package. The file pyproject.toml is responsible for providing the information needed to install the package. The installation can be done using `pip install -e .` from the root of the repository. If you install it using only `pip install .`, the package will be installed and if you modify the code you will need to reinstall it to see the changes.
-
-## Code examples
-In the folder [notebooks](./notebooks/) there are three Jupyter notebooks with examples on how to improve code quality. It's not intended to be the best way to do the proposed tasks, but it present some useful tips to improve code quality, making it more organized, maintainable, and scalable.
-- [example.ipynb](./notebooks/example.ipynb): Example of a code without a proper structure.
-- [example_refactored.ipynb](./notebooks/example_refactored.ipynb): This is a proposed refactored version of the code in the previous notebook. In this version, we have a better structure, making it much easier to run the code with different configurations.
-
-More information on the examples can be found in the notebooks.
-
-## Additional information
-This material was created as a part of an internal training for the members of the lab [GCER](https://www.gcerlab.com/)
-![](./docs/gcer_logo.png)
