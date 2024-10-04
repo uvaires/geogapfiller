@@ -8,12 +8,12 @@ from sklearn.linear_model import LinearRegression
 from lightgbm import LGBMRegressor
 
 
+
 # Abstract Base Class for Fillers
 class Filler(ABC):
     @abstractmethod
     def fill_gaps(self, i, j, raster_values, base_dates) -> np.array:
         pass
-
 
 # Concrete Class for MedianFiller
 class MedianFiller(Filler):
