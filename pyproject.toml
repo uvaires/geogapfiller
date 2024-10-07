@@ -16,8 +16,6 @@ dependencies = [
     "matplotlib",
     "rasterio",
     "pyproj",
-    "os",
-    "glob",
     "sklearn",
     "joblib",
     "collections",
