@@ -164,14 +164,14 @@ def get_method(method_name: str) -> Filler:
             f"Filler {Filler} not implemented. Available methods are: [median, polynomial, harmonic, and 'lightgbm']"
         )
 
-def run_method(filler, img_list: list, base_dates: list, n_jobs: int = -1):
-    """ Run the gap-filling method on the input images
+def run_method(filler:Filler, img_list: list, base_dates: list, n_jobs: int = -1)->np.array:
+    """
+    Run the gap-filling method on the input images
     :param filler: Instance of the Filler subclass
     :param img_list: List of input images
     :param base_dates: List of base dates
     :param n_jobs: Number of jobs to run in parallel
     :return: Filled raster
-
     """
     # check if the img_list is a list
 

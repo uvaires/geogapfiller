@@ -26,7 +26,17 @@ def _convert_dates(dates):
     base_dates = [date.strftime("%Y%m%d") for date in dates]
     return base_dates
 
-def _export_raster(outputdir, img_list, raster_filled, img_dates, method, pattern):
+def export_raster(outputdir:list, img_list:list, raster_filled:tuple, img_dates:list, method:str, pattern:str)->None:
+    """
+ Export the filled EVI images as GeoTIFF files.
+    :param outputdir: Output directory (as a string)
+    :param img_list: List of image files
+    :param raster_filled: 3D array (n_layers, height, width) of the filled raster data
+    :param img_dates: List of dates corresponding to the images (datetime format)
+    :param method: Method used to fill the gaps (e.g., 'harmonic', 'lightgbm')
+    :param pattern: Pattern (e.g., band name like 'B02', 'NIR') to be used in the filename
+    :return: None
+    """
     # Open the first image to get the profile
     img_profile = _img_metadata(img_list)
     # convert dates into string

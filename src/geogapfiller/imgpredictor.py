@@ -2,11 +2,19 @@ import numpy as np
 from datetime import timedelta
 from collections import Counter
 from geogapfiller import utils
-from geogapfiller.gapfiller import gapfiller
+from geogapfiller import gapfiller
 
 
 
-def run_method(filler, img_list: list, base_dates: list, interval: int):
+def run_method(filler:gapfiller.Filler, img_list: list, base_dates: list, interval: int)->tuple:
+    """
+      Run the method to predict the images
+      :param filler: Instance of a Filler subclass from gapfiller (e.g., MedianFiller, PolynomialFiller)
+      :param img_list: List of rasters (images) to be processed
+      :param base_dates: List of base dates corresponding to the rasters
+      :param interval: Time interval in days for prediction
+      :return: Predicted raster and date range
+      """
 
     dates_counter = Counter(base_dates)
     start_date = min(base_dates)
