@@ -16,7 +16,7 @@ dependencies = [
     "matplotlib",
     "rasterio",
     "pyproj",
-    "sklearn",
+    "scikit-learn",
     "joblib",
     "collections",
     "lightgbm",
