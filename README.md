@@ -7,7 +7,12 @@ This repository implements four gap-filling methods to reconstruct geospatial da
 
 - Harmonic approach: The harmonic gap-filling approach leverages a Fourier-like series, using a combination of sine and cosine functions to estimate missing data. This method is widely applied in remote sensing because of its strength in capturing periodic and seasonal variations. Harmonic models tend to excel when data gaps are evenly distributed, as they can smoothly interpolate across time. However, when gaps are uneven or concentrated in specific periods, the model’s accuracy may decline, resulting in less reliable gap-filling.
 
-- LightGBM approach: The LightGBM gap-filling approach utilizes a tree-based learning algorithm to model relationships in the data. Unlike harmonic models, which assume periodicity, LightGBM does not rely on any inherent patterns and instead learns from the provided training data. It is known for its efficiency and produces results comparable to the Gradient Boosting Machine. 
+- LightGBM approach: The LightGBM gap-filling approach utilizes a tree-based learning algorithm to model relationships in the data. Unlike harmonic models, which assume periodicity, LightGBM does not rely on any inherent patterns and instead learns from the provided training data. It is known for its efficiency and produces results comparable to the Gradient Boosting Machine.
+  
+![image](https://github.com/user-attachments/assets/62a3aef8-4110-4a12-824c-a1233b0f7dfd)
+
+
+
 
 
 ## Dependencies management and package installation
