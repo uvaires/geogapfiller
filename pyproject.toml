@@ -18,7 +18,6 @@ dependencies = [
     "pyproj",
     "scikit-learn",
     "joblib",
-    "collections",
     "lightgbm",
 
 
