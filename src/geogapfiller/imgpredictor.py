@@ -6,7 +6,7 @@ from geogapfiller import gapfiller
 
 
 
-def run_method(filler:gapfiller.Filler, img_list: list, base_dates: list, interval: int)->tuple:
+def run_method(filler:gapfiller.Filler, img_list: list, base_dates: list, interval: int, n_jobs=-1)->tuple:
     """
       Run the method to predict the images
       :param filler: Instance of a Filler subclass from gapfiller (e.g., MedianFiller, PolynomialFiller)
@@ -47,6 +47,6 @@ def run_method(filler:gapfiller.Filler, img_list: list, base_dates: list, interv
                 pass  # Date is outside the specified interval
 
     # predicted_raster = filler.fi(original_arr, date_range)
-    predicted_raster = gapfiller.run_method(filler, original_arr, date_range)
+    predicted_raster = gapfiller.run_method(filler, original_arr, date_range, n_jobs=n_jobs)
 
     return predicted_raster, date_range
